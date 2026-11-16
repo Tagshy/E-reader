@@ -37,14 +37,14 @@ class ReadingExperienceTest {
             original.outputStream().use { pdf.writeTo(it) }
         } finally { pdf.close() }
         val store = LibraryStore(context)
-        val book = store.import(Uri.fromFile(original))
+        val book = store.import(Uri.fromFile(original)).copy(title = "Livro de teste")
         store.save(listOf(book))
         original.delete() // All reading below must use the app's offline copy.
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             compose.waitForIdle()
             compose.mainClock.advanceTimeBy(3000)
             compose.waitForIdle()
-            compose.onNodeWithText("reading-experience").performClick()
+            compose.onNodeWithText("Livro de teste").performClick()
             compose.waitUntil(15000) {
                 compose.onAllNodesWithContentDescription("Leitor, página 1 de 3").fetchSemanticsNodes().isNotEmpty()
             }
@@ -72,7 +72,7 @@ class ReadingExperienceTest {
             compose.waitForIdle()
             compose.onNodeWithText("‹ Voltar").performClick()
             compose.onNodeWithText("Olá, Walter").assertExists()
-            compose.onNodeWithText("reading-experience").performClick()
+            compose.onNodeWithText("Livro de teste").performClick()
             compose.waitUntil(15000) {
                 compose.onAllNodesWithContentDescription("Leitor, página 2 de 3").fetchSemanticsNodes().isNotEmpty()
             }
