@@ -4,7 +4,7 @@ import android.content.Context
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.core.view.ViewCompat
@@ -40,15 +40,22 @@ class ReadingExperienceTest {
         val book = store.import(Uri.fromFile(original)).copy(title = "Livro de teste")
         store.save(listOf(book))
         original.delete() // All reading below must use the app's offline copy.
+        fun waitForPage(number: Int) {
+            compose.waitUntil(20000) {
+                compose.onAllNodes(
+                    hasContentDescription("Leitor, página $number de 3") and
+                        SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Pronto para leitura")
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.waitForIdle()
+        }
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             compose.waitForIdle()
             compose.mainClock.advanceTimeBy(3000)
             compose.waitForIdle()
             compose.onNodeWithText("Livro de teste").performClick()
-            compose.waitUntil(15000) {
-                compose.onAllNodesWithContentDescription("Leitor, página 1 de 3").fetchSemanticsNodes().isNotEmpty()
-            }
-            compose.waitForIdle()
+            waitForPage(1)
+            println("READER_READY_PAGE_1")
             compose.onNodeWithText("‹ Voltar").assertDoesNotExist()
             scenario.onActivity { activity ->
                 fun keepsScreenOn(view: android.view.View): Boolean = view.keepScreenOn ||
@@ -58,24 +65,25 @@ class ReadingExperienceTest {
                 if (insets != null) assertFalse(insets.isVisible(WindowInsetsCompat.Type.statusBars()))
             }
             compose.onNodeWithContentDescription("Leitor, página 1 de 3").performTouchInput { swipeLeft() }
-            compose.waitUntil(15000) { store.load().single().page == 1 }
-            compose.waitForIdle()
+            waitForPage(2)
+            assertEquals(1, store.load().single().page)
+            println("READER_READY_PAGE_2")
             // The reader's controls are opt-in; reveal them at the center.
             compose.onNodeWithContentDescription("Leitor, página 2 de 3").performTouchInput { click(center) }
             compose.onNodeWithText("2 / 3").assertExists()
             compose.onNodeWithText("Próxima ›").performClick()
-            compose.waitUntil(15000) { store.load().single().page == 2 }
-            compose.waitForIdle()
+            waitForPage(3)
+            assertEquals(2, store.load().single().page)
+            println("READER_READY_PAGE_3")
             compose.onNodeWithText("Próxima ›").assertIsNotEnabled()
             compose.onNodeWithText("‹ Anterior").performClick()
-            compose.waitUntil(15000) { store.load().single().page == 1 }
-            compose.waitForIdle()
+            waitForPage(2)
+            assertEquals(1, store.load().single().page)
+            println("READER_READY_PAGE_2")
             compose.onNodeWithText("‹ Voltar").performClick()
             compose.onNodeWithText("Olá, Walter").assertExists()
             compose.onNodeWithText("Livro de teste").performClick()
-            compose.waitUntil(15000) {
-                compose.onAllNodesWithContentDescription("Leitor, página 2 de 3").fetchSemanticsNodes().isNotEmpty()
-            }
+            waitForPage(2)
             compose.onNodeWithText("‹ Voltar").assertDoesNotExist()
             scenario.recreate()
             compose.waitForIdle()

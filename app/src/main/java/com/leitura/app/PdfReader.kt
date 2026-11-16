@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
@@ -122,6 +123,7 @@ fun PdfReader(book: Book, store: LibraryStore, onBack: () -> Unit, onFavorite: (
                 Box(Modifier.fillMaxSize()
                     .semantics {
                         contentDescription = "Leitor, página ${page + 1} de $total"
+                        stateDescription = if (turning) "Carregando página" else "Pronto para leitura"
                         customActions = listOf(
                             CustomAccessibilityAction("Próxima página") { move(1) },
                             CustomAccessibilityAction("Página anterior") { move(-1) },
@@ -225,7 +227,7 @@ private fun TurningPage(book: Book, page: Int, store: LibraryStore, onTurning: (
         val sheetHeight = sheetWidth / ratio
         Box(Modifier.size(sheetWidth, sheetHeight)) {
             val base = if (next != null && forward) next else old
-            if (base != null) Image(base.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds)
+            if (base != null) Image(base.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
             if (next != null && old != null) {
                 val amount = turn.value
                 // Perspective, a moving spine shadow and a paper highlight give the turn depth.
@@ -239,7 +241,7 @@ private fun TurningPage(book: Book, page: Int, store: LibraryStore, onTurning: (
                     shadowElevation = 18f * density * sin(amount * Math.PI).toFloat().coerceAtLeast(0f)
                 }) {
                     Image((if (forward) old else next).asImageBitmap(), null,
-                        Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds)
+                        Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
                     Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
                         listOf(Color.Transparent, Color.Black.copy(alpha = shade),
                             Color.White.copy(alpha = shade * 0.4f)))))
