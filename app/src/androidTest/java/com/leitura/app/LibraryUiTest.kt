@@ -19,7 +19,12 @@ class LibraryUiTest {
         LibraryStore(context).save(listOf(Book("content://missing/duna", "Duna", favorite = true),
             Book("content://missing/jogos", "Jogos Vorazes", lastRead = 123)))
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            compose.waitUntil(10000) { compose.onAllNodesWithText("Sua estante").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitForIdle()
+            // Opening uses a coroutine delay; advance the test clock explicitly.
+            compose.mainClock.advanceTimeBy(3000)
+            compose.waitForIdle()
+            println(compose.onRoot().printToString())
+            compose.onNodeWithText("Sua estante").assertExists()
             compose.onNodeWithText("Duna").assertExists()
             compose.onNodeWithText("Favoritos", useUnmergedTree = true).performClick()
             compose.onNodeWithText("Duna").assertExists()
