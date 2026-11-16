@@ -26,7 +26,8 @@ class ReadingExperienceTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.getSharedPreferences("leitura", 0).edit().clear().commit()
         val original = File(context.cacheDir, "reading-experience.pdf")
-        PdfDocument().use { pdf ->
+        val pdf = PdfDocument()
+        try {
             repeat(3) { index ->
                 val page = pdf.startPage(PdfDocument.PageInfo.Builder(400, 600, index + 1).create())
                 page.canvas.drawColor(android.graphics.Color.WHITE)
@@ -34,7 +35,7 @@ class ReadingExperienceTest {
                 pdf.finishPage(page)
             }
             original.outputStream().use { pdf.writeTo(it) }
-        }
+        } finally { pdf.close() }
         val store = LibraryStore(context)
         val book = store.import(Uri.fromFile(original))
         store.save(listOf(book))
