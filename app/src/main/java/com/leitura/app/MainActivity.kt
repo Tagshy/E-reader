@@ -9,9 +9,11 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
@@ -55,7 +57,6 @@ private fun LeituraApp() {
     val snackbar = remember { SnackbarHostState() }
     var opening by rememberSaveable { mutableStateOf(true) }
     var selectedUri by rememberSaveable { mutableStateOf<String?>(null) }
-    var query by rememberSaveable { mutableStateOf("") }
     var tab by rememberSaveable { mutableStateOf("Biblioteca") }
     var importing by remember { mutableStateOf(false) }
     var removal by remember { mutableStateOf<Book?>(null) }
@@ -94,64 +95,78 @@ private fun LeituraApp() {
     BackHandler(selectedUri != null) { selectedUri = null }
     if (opening) { Opening { opening = false }; return }
     val selected = books.find { it.uri == selectedUri }
-    Scaffold(containerColor = Ink, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
-        Surface(color = Ink) {
-            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (selected != null) {
-                    TextButton(onClick = { selectedUri = null }) { Text("‹ Voltar") }
-                    Text(selected.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { update(selected.copy(favorite = !selected.favorite)) }) {
-                        Text(if (selected.favorite) "★" else "☆", fontSize = 26.sp,
-                            modifier = Modifier.semantics { contentDescription = if (selected.favorite) "Remover dos favoritos" else "Adicionar aos favoritos" })
-                    }
-                } else {
-                    BrandMark(Modifier.size(64.dp))
-                    Column(Modifier.weight(1f).padding(start = 8.dp)) {
-                        Text("Leitura", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = Gold)
-                        Text("UM UNIVERSO EM CADA PÁGINA", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    UpdateButton()
+    if (selected != null) {
+        PdfReader(selected, store, onBack = { selectedUri = null },
+            onFavorite = { update(selected.copy(favorite = !selected.favorite)) },
+            onProgress = { page, count ->
+                books.find { it.uri == selected.uri }?.let {
+                    update(it.copy(page = page, pageCount = count, lastRead = System.currentTimeMillis()))
+                }
+            })
+        return
+    }
+    Scaffold(containerColor = Ink, snackbarHost = { SnackbarHost(snackbar) },
+        bottomBar = {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                listOf("Biblioteca" to "▤", "Favoritos" to "★", "Recentes" to "◷", "Atualizações" to "↓").forEach { (name, symbol) ->
+                    NavigationBarItem(selected = tab == name, onClick = { tab = name },
+                        icon = { Text(symbol, fontSize = 22.sp) },
+                        label = { Text(name, fontSize = 10.sp, maxLines = 1) })
                 }
             }
-        }
-    }, bottomBar = {
-        if (selected == null) NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-            listOf("Biblioteca" to "▤", "Favoritos" to "★", "Recentes" to "◷").forEach { (name, symbol) ->
-                NavigationBarItem(selected = tab == name, onClick = { tab = name },
-                    icon = { Text(symbol, fontSize = 23.sp) }, label = { Text(name) })
-            }
-        }
-    }) { padding ->
-        if (selected != null) PdfReader(selected, store, Modifier.padding(padding), onProgress = { page, count ->
-            books.find { it.uri == selected.uri }?.let { update(it.copy(page = page, pageCount = count, lastRead = System.currentTimeMillis())) }
-        }) else Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
-            Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Sua estante", style = MaterialTheme.typography.headlineMedium)
-                    Text("${books.size} livro(s) · leitura offline", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        }) { padding ->
+        if (tab == "Atualizações") UpdatesScreen(Modifier.padding(padding))
+        else Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 22.dp)) {
+            Spacer(Modifier.height(28.dp))
+            Text("Olá, Walter", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
+            Text("Um bom momento para uma nova história.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp, bottom = 24.dp))
+            Surface(onClick = { picker.launch(arrayOf("application/pdf")) }, enabled = !importing,
+                shape = RoundedCornerShape(22.dp), color = Color.Transparent,
+                modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Adicionar livro em PDF" }) {
+                Row(Modifier.background(Brush.horizontalGradient(listOf(Color(0xFF7258DE), Color(0xFF346CC0))))
+                    .padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("+", color = Color.White, fontSize = 32.sp, modifier = Modifier.padding(end = 18.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Adicionar livro", color = Color.White, style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold)
+                        Text("Escolha seus PDFs", color = Color(0xFFE8E5FF), style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text("↗", color = Color.White, fontSize = 24.sp)
                 }
-                FilledTonalButton(enabled = !importing, onClick = { picker.launch(arrayOf("application/pdf")) }) { Text("+ PDF") }
             }
-            OutlinedTextField(value = query, onValueChange = { query = it }, singleLine = true,
-                label = { Text("Buscar na biblioteca") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
-                trailingIcon = { if (query.isNotEmpty()) TextButton(onClick = { query = "" }) { Text("Limpar") } })
             if (importing) {
                 LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 12.dp))
                 Text("Salvando PDFs para ler offline…", style = MaterialTheme.typography.bodySmall)
             }
-            val visible = visibleBooks(books, query, tab)
-            Text("$tab · ${visible.size}", color = Gold, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(vertical = 18.dp))
+            val visible = visibleBooks(books, "", tab)
+            Row(Modifier.fillMaxWidth().padding(top = 26.dp, bottom = 18.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(if (tab == "Biblioteca") "Seus livros" else tab, style = MaterialTheme.typography.titleMedium)
+                Text("${visible.size} livro(s)", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium)
+            }
             if (visible.isEmpty()) Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    BrandMark(Modifier.size(144.dp))
-                    Text(when { query.isNotBlank() -> "Nenhum livro encontrado"; tab == "Favoritos" -> "Suas histórias favoritas, aqui"; tab == "Recentes" -> "Continue de onde parou"; else -> "A próxima história é sua" }, style = MaterialTheme.typography.titleMedium)
-                    Text(when (tab) { "Favoritos" -> "Toque na estrela de um livro para favoritar."; "Recentes" -> "Os livros que você abrir aparecerão aqui."; else -> "Importe seus livros em PDF para começar." },
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
+                    Text("✦", color = Gold, fontSize = 42.sp, modifier = Modifier.padding(bottom = 18.dp))
+                    Text(when (tab) {
+                        "Favoritos" -> "Suas histórias favoritas, aqui"
+                        "Recentes" -> "Continue de onde parou"
+                        else -> "A próxima história é sua"
+                    }, style = MaterialTheme.typography.titleMedium)
+                    Text(when (tab) {
+                        "Favoritos" -> "Toque na estrela de um livro para favoritar."
+                        "Recentes" -> "Os livros que você abrir aparecerão aqui."
+                        else -> "Adicione um PDF e leve sua leitura com você."
+                    }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(12.dp))
                 }
             } else LazyVerticalGrid(columns = GridCells.Adaptive(145.dp), contentPadding = PaddingValues(bottom = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 items(visible, key = { it.uri }) { book -> BookCard(book, store,
-                    onOpen = { selectedUri = book.uri }, onFavorite = { update(book.copy(favorite = !book.favorite)) }, onRemove = { removal = book }) }
+                    onOpen = { selectedUri = book.uri }, onFavorite = { update(book.copy(favorite = !book.favorite)) },
+                    onRemove = { removal = book }) }
             }
         }
     }
@@ -183,55 +198,6 @@ private fun BookCard(book: Book, store: LibraryStore, onOpen: () -> Unit, onFavo
                 Text(if (book.lastRead > 0) "${(book.progress * 100).roundToInt()}% lido" else "Não iniciado",
                     modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
                 TextButton(onClick = onRemove, contentPadding = PaddingValues(0.dp)) { Text("Remover", fontSize = 10.sp) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun PdfReader(book: Book, store: LibraryStore, modifier: Modifier, onProgress: (Int, Int) -> Unit) {
-    var count by remember(book.uri, book.fileName) { mutableStateOf<Int?>(null) }
-    LaunchedEffect(book.uri, book.fileName) {
-        count = withContext(Dispatchers.IO) { runCatching { store.count(book) }.getOrDefault(0) }
-    }
-    var page by rememberSaveable(book.uri) { mutableIntStateOf(book.page) }
-    val currentProgress by rememberUpdatedState(onProgress)
-    val total = count
-    LaunchedEffect(book.uri, page, total) {
-        if (total != null && total > 0) {
-            val bounded = page.coerceIn(0, total - 1)
-            if (bounded != page) page = bounded else currentProgress(page, total)
-        }
-    }
-    val threshold = with(LocalDensity.current) { 48.dp.toPx() }
-    Column(modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-        when {
-            total == null -> Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            total == 0 -> Box(Modifier.weight(1f).padding(24.dp), contentAlignment = Alignment.Center) {
-                Text("Não foi possível abrir este PDF. Ele pode estar protegido por senha ou indisponível. Importe novamente o arquivo original.")
-            }
-            else -> {
-                Box(Modifier.weight(1f).fillMaxWidth().pointerInput(book.uri, page, total) {
-                    var drag = 0f
-                    detectHorizontalDragGestures(onDragStart = { drag = 0f }, onHorizontalDrag = { change, amount -> change.consume(); drag += amount },
-                        onDragCancel = { drag = 0f }, onDragEnd = {
-                            if (drag < -threshold) page = (page + 1).coerceAtMost(total - 1)
-                            else if (drag > threshold) page = (page - 1).coerceAtLeast(0)
-                            drag = 0f
-                        })
-                }, contentAlignment = Alignment.Center) {
-                    Crossfade(targetState = page.coerceIn(0, total - 1), label = "Virar página") { index ->
-                        PdfPage(book, index, store, 1440, Modifier.fillMaxSize().padding(8.dp))
-                    }
-                }
-                if (total > 1) Slider(value = page.toFloat(), onValueChange = { page = it.roundToInt().coerceIn(0, total - 1) },
-                    valueRange = 0f..(total - 1).toFloat(), modifier = Modifier.padding(horizontal = 24.dp).semantics { contentDescription = "Ir para página" })
-                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton(onClick = { page-- }, enabled = page > 0) { Text("‹ Anterior") }
-                    Text("${page + 1} / $total", style = MaterialTheme.typography.labelLarge)
-                    TextButton(onClick = { page++ }, enabled = page < total - 1) { Text("Próxima ›") }
-                }
             }
         }
     }

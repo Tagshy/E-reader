@@ -1,0 +1,84 @@
+package com.leitura.app
+
+import android.content.Context
+import android.graphics.Paint
+import android.graphics.pdf.PdfDocument
+import android.net.Uri
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.test.core.app.ActivityScenario
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Assert.*
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import java.io.File
+
+@RunWith(AndroidJUnit4::class)
+class ReadingExperienceTest {
+    @get:Rule val compose = createEmptyComposeRule()
+
+    @Test fun immersiveReaderTurnsBothWaysAndPersistsProgress() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.getSharedPreferences("leitura", 0).edit().clear().commit()
+        val original = File(context.cacheDir, "reading-experience.pdf")
+        PdfDocument().use { pdf ->
+            repeat(3) { index ->
+                val page = pdf.startPage(PdfDocument.PageInfo.Builder(400, 600, index + 1).create())
+                page.canvas.drawColor(android.graphics.Color.WHITE)
+                page.canvas.drawText("Pagina ${index + 1}", 40f, 100f, Paint().apply { textSize = 28f })
+                pdf.finishPage(page)
+            }
+            original.outputStream().use { pdf.writeTo(it) }
+        }
+        val store = LibraryStore(context)
+        val book = store.import(Uri.fromFile(original))
+        store.save(listOf(book))
+        original.delete() // All reading below must use the app's offline copy.
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeBy(3000)
+            compose.waitForIdle()
+            compose.onNodeWithText("reading-experience").performClick()
+            compose.waitUntil(15000) {
+                compose.onAllNodesWithContentDescription("Leitor, página 1 de 3").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.waitForIdle()
+            compose.onNodeWithText("‹ Voltar").assertDoesNotExist()
+            scenario.onActivity { activity ->
+                fun keepsScreenOn(view: android.view.View): Boolean = view.keepScreenOn ||
+                    (view is android.view.ViewGroup && (0 until view.childCount).any { keepsScreenOn(view.getChildAt(it)) })
+                assertTrue(keepsScreenOn(activity.window.decorView))
+                val insets = ViewCompat.getRootWindowInsets(activity.window.decorView)
+                if (insets != null) assertFalse(insets.isVisible(WindowInsetsCompat.Type.statusBars()))
+            }
+            compose.onNodeWithContentDescription("Leitor, página 1 de 3").performTouchInput { swipeLeft() }
+            compose.waitUntil(15000) { store.load().single().page == 1 }
+            compose.waitForIdle()
+            // The reader's controls are opt-in; reveal them at the center.
+            compose.onNodeWithContentDescription("Leitor, página 2 de 3").performTouchInput { click(center) }
+            compose.onNodeWithText("2 / 3").assertExists()
+            compose.onNodeWithText("Próxima ›").performClick()
+            compose.waitUntil(15000) { store.load().single().page == 2 }
+            compose.waitForIdle()
+            compose.onNodeWithText("Próxima ›").assertIsNotEnabled()
+            compose.onNodeWithText("‹ Anterior").performClick()
+            compose.waitUntil(15000) { store.load().single().page == 1 }
+            compose.waitForIdle()
+            compose.onNodeWithText("‹ Voltar").performClick()
+            compose.onNodeWithText("Olá, Walter").assertExists()
+            compose.onNodeWithText("reading-experience").performClick()
+            compose.waitUntil(15000) {
+                compose.onAllNodesWithContentDescription("Leitor, página 2 de 3").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("‹ Voltar").assertDoesNotExist()
+            scenario.recreate()
+            compose.waitForIdle()
+            assertEquals(1, store.load().single().page)
+        }
+    }
+}
