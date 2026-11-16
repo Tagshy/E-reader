@@ -34,7 +34,11 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Compilar e verificar código de debug e release
-        run: gradle :app:assembleDebug :app:assembleDebugAndroidTest :app:compileReleaseKotlin :app:testDebugUnitTest :app:lintDebug :app:lintRelease --stacktrace
+        run: |
+          if ! gradle :app:assembleDebug :app:assembleDebugAndroidTest :app:compileReleaseKotlin :app:testDebugUnitTest :app:lintDebug :app:lintRelease --stacktrace; then
+            find app/build/intermediates/lint_intermediate_text_report -name '*.txt' -type f -exec cat {} \; || true
+            exit 1
+          fi
       - name: Habilitar KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

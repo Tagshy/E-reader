@@ -104,6 +104,7 @@ class NarrationIntegrationTest {
         context.getSharedPreferences("narration", 0).edit().clear().commit()
         val book = nativeBook()
         LibraryStore(context).save(listOf(book))
+        var finished = false
         ActivityScenario.launch(MainActivity::class.java).use { activity ->
             try {
                 ContextCompat.startForegroundService(context, Intent(context, NarrationService::class.java)
@@ -123,9 +124,11 @@ class NarrationIntegrationTest {
                 awaitState("resume") { it.status == NarrationStatus.PLAYING && it.page == saved.page }
                 awaitState("finish") { it.status == NarrationStatus.COMPLETED }
                 assertTrue(NarrationPreferences(context).position(book.uri)!!.completed)
+                finished = true
             } finally {
                 context.startService(Intent(context, NarrationService::class.java).setAction(NarrationService.STOP))
                 awaitState("stop") { it.status == NarrationStatus.IDLE }
+                if (finished) assertTrue(NarrationPreferences(context).position(book.uri)!!.completed)
             }
         }
     }

@@ -1,6 +1,7 @@
 package com.leitura.app
 
 import android.app.*
+import android.annotation.SuppressLint
 import android.content.*
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
@@ -186,13 +187,13 @@ class NarrationService : Service() {
             }, requested)
             engine?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(id: String?) { handler.post {
-                    if (id == utterance) publish(NarrationStatus.PLAYING, "Narrando página " + (page + 1))
+                    if (id != null && id == utterance) publish(NarrationStatus.PLAYING, "Narrando página " + (page + 1))
                 } }
                 override fun onRangeStart(id: String?, start: Int, end: Int, frame: Int) { handler.post {
-                    if (id == utterance) { offset = (chunkStart + start).coerceAtMost(chunkEnd); persist() }
+                    if (id != null && id == utterance) { offset = (chunkStart + start).coerceAtMost(chunkEnd); persist() }
                 } }
                 override fun onDone(id: String?) { handler.post {
-                    if (id == utterance) {
+                    if (id != null && id == utterance) {
                         utterance = null
                         watchdog?.cancel(); watchdog = null
                         offset = chunkEnd; spoken = true; persist()
@@ -214,7 +215,7 @@ class NarrationService : Service() {
     }
 
     private fun speechError(id: String?) { handler.post {
-        if (id == utterance) fail("A voz não conseguiu ler este trecho. Confira se os dados offline da voz estão instalados.")
+        if (id != null && id == utterance) fail("A voz não conseguiu ler este trecho. Confira se os dados offline da voz estão instalados.")
     } }
 
     private suspend fun advance(token: Int) {
@@ -236,7 +237,7 @@ class NarrationService : Service() {
                 watchdog?.cancel()
                 watchdog = scope.launch {
                     delay(120000)
-                    if (id == utterance) fail("A voz parou de responder. Tente retomar a narração.")
+                    if (id != null && id == utterance) fail("A voz parou de responder. Tente retomar a narração.")
                 }
                 wake.acquire(30 * 60 * 1000L)
                 publish(NarrationStatus.PLAYING, "Narrando página " + (page + 1))
@@ -295,7 +296,7 @@ class NarrationService : Service() {
         stopSelf()
     }
     private fun finishService() {
-        persist(); halt()
+        persist(completed = NarrationController.state.value.status == NarrationStatus.COMPLETED); halt()
         NarrationController.state.value = NarrationState()
         session.isActive = false
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -328,6 +329,9 @@ class NarrationService : Service() {
             android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
         else startForeground(NOTIFICATION, notification())
     }
+    // Media-session notifications are exempt from POST_NOTIFICATIONS on Android 13+.
+    // https://developer.android.com/develop/ui/views/notifications/notification-permission#exemptions
+    @SuppressLint("NotificationPermission")
     private fun publish(status: NarrationStatus, message: String, notify: Boolean = true) {
         val selected = book
         NarrationController.state.value = NarrationState(selected?.uri.orEmpty(), selected?.title.orEmpty(), page, count, status, message)
