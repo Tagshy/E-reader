@@ -15,6 +15,13 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - name: Verificar sintaxe da configuração de assinatura
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile("scripts/configure-signing.ps1", [ref]$tokens, [ref]$parseErrors)
+          if ($parseErrors) { throw ($parseErrors | Out-String) }
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -55,7 +62,6 @@ jobs:
     permissions:
       contents: write
     env:
-      LEITURA_KEYSTORE: ${{ runner.temp }}/leitura-release.jks
       LEITURA_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       EXPECTED_CERT: ${{ secrets.ANDROID_SIGNING_CERT_SHA256 }}
@@ -64,6 +70,9 @@ jobs:
       - name: Exigir assinatura privada fixa
         run: |
           test -n "$KEYSTORE_BASE64" && test -n "$LEITURA_KEYSTORE_PASSWORD" && test -n "$EXPECTED_CERT" || { echo "::error::Configure os três GitHub Secrets de assinatura. Nenhum APK temporário será publicado."; exit 1; }
+          LEITURA_KEYSTORE="$RUNNER_TEMP/leitura-release.jks"
+          echo "LEITURA_KEYSTORE=$LEITURA_KEYSTORE" >> "$GITHUB_ENV"
+          umask 077
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$LEITURA_KEYSTORE"
           chmod 600 "$LEITURA_KEYSTORE"
           echo "LEITURA_VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
@@ -102,4 +111,4 @@ jobs:
           gh release create "v2.1.0-build-${GITHUB_RUN_NUMBER}" Leitura.apk Leitura.apk.sha256 update.json --target "$GITHUB_SHA" --title "Leitura ${LEITURA_VERSION_NAME}" --notes-file RELEASE_NOTES.md
       - name: Remover chave temporária do runner
         if: always()
-        run: rm -f -- "$LEITURA_KEYSTORE"
+        run: if [ -n "${LEITURA_KEYSTORE:-}" ]; then rm -f -- "$LEITURA_KEYSTORE"; fi
