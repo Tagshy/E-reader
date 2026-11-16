@@ -39,9 +39,10 @@ class LibraryStore(private val context: Context) {
             val b = json.optJSONObject(index) ?: return@mapNotNull null
             val uri = b.optString("uri")
             if (uri.isBlank()) return@mapNotNull null
+            val savedPage = b.optInt("page", prefs.getInt("page:$uri", 0)).coerceAtLeast(0)
             Book(uri, b.optString("title", "Livro"), b.optString("fileName"), b.optBoolean("favorite"),
-                b.optInt("page", prefs.getInt("page:$uri", 0)).coerceAtLeast(0),
-                b.optInt("pageCount").coerceAtLeast(0), b.optLong("lastRead"))
+                savedPage, b.optInt("pageCount").coerceAtLeast(0),
+                b.optLong("lastRead", if (savedPage > 0) 1L else 0L))
         }.distinctBy { it.uri }
     }
     fun save(books: List<Book>) {

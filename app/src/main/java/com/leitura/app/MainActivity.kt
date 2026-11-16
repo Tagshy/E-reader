@@ -190,8 +190,9 @@ private fun BookCard(book: Book, store: LibraryStore, onOpen: () -> Unit, onFavo
 
 @Composable
 private fun PdfReader(book: Book, store: LibraryStore, modifier: Modifier, onProgress: (Int, Int) -> Unit) {
-    val count by produceState<Int?>(null, book.uri, book.fileName) {
-        value = withContext(Dispatchers.IO) { runCatching { store.count(book) }.getOrDefault(0) }
+    var count by remember(book.uri, book.fileName) { mutableStateOf<Int?>(null) }
+    LaunchedEffect(book.uri, book.fileName) {
+        count = withContext(Dispatchers.IO) { runCatching { store.count(book) }.getOrDefault(0) }
     }
     var page by rememberSaveable(book.uri) { mutableIntStateOf(book.page) }
     val currentProgress by rememberUpdatedState(onProgress)
