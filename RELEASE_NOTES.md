@@ -1,13 +1,12 @@
-# Leitura 2.0
+# Leitura 2.1 — Atualizações dentro do app
 
-- Tema escuro permanente e identidade dourada original, com animação de abertura.
-- Biblioteca com capas reais (primeira página do PDF), busca, favoritos e recentes.
-- PDFs copiados para o armazenamento privado do app, sem dependência da origem após a importação.
-- Progresso salvo, navegação por gestos e botões e seletor de páginas.
-- Migração da biblioteca e páginas da versão 1.0 quando instalada como atualização compatível.
+- Botão Atualizações na biblioteca, com indicação quando há uma versão nova.
+- Download do APK com verificação de integridade, versão, aplicativo e assinatura.
+- Instalação confirmada pelo usuário no Android.
+- Assinatura privada fixa em GitHub Secrets e versionCode crescente automaticamente.
+- Publicação bloqueada se a assinatura estiver ausente ou incorreta.
+- Biblioteca, leitura offline de PDFs, capas, favoritos, recentes e progresso preservados.
 
-Android 8.0 ou superior. APK de debug para uso pessoal. Publicado somente após compilação, lint, testes unitários e testes de PDFs offline e interface em emulador Android.
+Esta é a transição da assinatura temporária 2.0 para a assinatura definitiva. A versão 2.0 não consegue instalar este APK por cima se o Android identificar certificados diferentes. Preserve os PDFs e registre as páginas antes de desinstalar. Depois de instalada esta versão com a assinatura definitiva, as próximas atualizações do mesmo certificado poderão ser instaladas mantendo os dados.
 
-A release anterior permanece disponível. O APK antigo usava uma chave de debug temporária do Actions; o Android pode recusar atualização por assinatura diferente. Não desinstale o app antigo sem guardar seus PDFs e registrar seu progresso. A migração de dados só ocorre quando o Android permite atualizar mantendo os dados.
-
-PDFs protegidos por senha não são suportados. A página do PDF mantém suas cores originais para preservar o conteúdo; a interface permanece escura.
+Android 8.0 ou superior. A internet é usada apenas na consulta e no download de atualizações; os PDFs importados continuam disponíveis offline.

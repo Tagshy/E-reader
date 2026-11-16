@@ -110,7 +110,7 @@ private fun LeituraApp() {
                         Text("Leitura", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = Gold)
                         Text("UM UNIVERSO EM CADA PÁGINA", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Text("2.0", color = Gold, style = MaterialTheme.typography.labelMedium)
+                    UpdateButton()
                 }
             }
         }

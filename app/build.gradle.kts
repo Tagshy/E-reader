@@ -10,11 +10,22 @@ android {
         applicationId = "com.leitura.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "2.0.0"
+        versionCode = System.getenv("LEITURA_VERSION_CODE")?.toInt() ?: 3
+        versionName = System.getenv("LEITURA_VERSION_NAME") ?: "2.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
+    signingConfigs {
+        create("privateRelease") {
+            System.getenv("LEITURA_KEYSTORE")?.let { storeFile = file(it) }
+            storePassword = System.getenv("LEITURA_KEYSTORE_PASSWORD")
+            keyAlias = "leitura"
+            keyPassword = System.getenv("LEITURA_KEYSTORE_PASSWORD")
+        }
+    }
+    buildTypes {
+        getByName("release") { signingConfig = signingConfigs.getByName("privateRelease") }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -35,4 +46,13 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+tasks.matching { it.name == "validateSigningRelease" }.configureEach {
+    doFirst {
+        check(!System.getenv("LEITURA_KEYSTORE").isNullOrBlank() &&
+            !System.getenv("LEITURA_KEYSTORE_PASSWORD").isNullOrBlank()) {
+            "Assinatura privada obrigatória. Configure os GitHub Secrets antes de publicar."
+        }
+    }
 }

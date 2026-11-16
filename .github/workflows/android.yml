@@ -1,7 +1,7 @@
 name: Leitura Android
 on:
   push:
-    branches: [main, leitura-2.0]
+    branches: [main, leitura-2.0, atualizacoes-seguras]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -10,7 +10,7 @@ concurrency:
   group: android-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  build:
+  validate:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -26,33 +26,21 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Compilar, testar e verificar
-        run: gradle :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug --stacktrace
+      - name: Compilar e verificar código de debug e release
+        run: gradle :app:assembleDebug :app:assembleDebugAndroidTest :app:compileReleaseKotlin :app:testDebugUnitTest :app:lintDebug :app:lintRelease --stacktrace
       - name: Habilitar KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Testar PDFs offline e interface no Android
+      - name: Testar leitura, atualizador e atualização sem perder dados
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 29
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          script: gradle :app:connectedDebugAndroidTest --stacktrace
-      - name: Preparar APK validado
-        run: |
-          cp app/build/outputs/apk/debug/app-debug.apk Leitura-2.0.apk
-          sha256sum Leitura-2.0.apk > Leitura-2.0.apk.sha256
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Leitura-2.0-APK
-          path: |
-            Leitura-2.0.apk
-            Leitura-2.0.apk.sha256
-          if-no-files-found: error
-          retention-days: 90
+          script: bash scripts/test-upgrade.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -60,12 +48,58 @@ jobs:
           path: |
             app/build/reports/
             app/build/outputs/androidTest-results/
-      - name: Publicar nova release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  publish:
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      LEITURA_KEYSTORE: ${{ runner.temp }}/leitura-release.jks
+      LEITURA_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      EXPECTED_CERT: ${{ secrets.ANDROID_SIGNING_CERT_SHA256 }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exigir assinatura privada fixa
+        run: |
+          test -n "$KEYSTORE_BASE64" && test -n "$LEITURA_KEYSTORE_PASSWORD" && test -n "$EXPECTED_CERT" || { echo "::error::Configure os três GitHub Secrets de assinatura. Nenhum APK temporário será publicado."; exit 1; }
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$LEITURA_KEYSTORE"
+          chmod 600 "$LEITURA_KEYSTORE"
+          echo "LEITURA_VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          echo "LEITURA_VERSION_NAME=2.1.0+build.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Compilar APK com assinatura definitiva
+        run: gradle :app:assembleRelease --stacktrace
+      - name: Conferir assinatura e preparar atualização
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk Leitura.apk
+          actual=$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs Leitura.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          test "${actual,,}" = "${EXPECTED_CERT,,}" || { echo "::error::A assinatura não corresponde à chave fixa cadastrada."; exit 1; }
+          sha256sum Leitura.apk > Leitura.apk.sha256
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          manifest = dict(applicationId="com.leitura.app", versionCode=int(os.environ["LEITURA_VERSION_CODE"]),
+              versionName=os.environ["LEITURA_VERSION_NAME"], apkName="Leitura.apk",
+              sha256=hashlib.sha256(Path("Leitura.apk").read_bytes()).hexdigest())
+          Path("update.json").write_text(json.dumps(manifest), encoding="utf-8")
+          PY
+      - name: Publicar nova release assinada
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="v2.0.0-build-${GITHUB_RUN_NUMBER}"
-          gh release create "$tag" Leitura-2.0.apk Leitura-2.0.apk.sha256 --target "$GITHUB_SHA" --title "Leitura 2.0" --notes-file RELEASE_NOTES.md
-    permissions:
-      contents: write
+          gh release create "v2.1.0-build-${GITHUB_RUN_NUMBER}" Leitura.apk Leitura.apk.sha256 update.json --target "$GITHUB_SHA" --title "Leitura ${LEITURA_VERSION_NAME}" --notes-file RELEASE_NOTES.md
+      - name: Remover chave temporária do runner
+        if: always()
+        run: rm -f -- "$LEITURA_KEYSTORE"

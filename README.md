@@ -28,3 +28,6 @@ O projeto de origem não possui Gradle Wrapper.
 
 ## Limitações
 PDFs protegidos por senha não são suportados. O documento mantém suas cores originais para preservar o conteúdo; a interface permanece escura. A animação de troca é uma transição suave, sem efeito de folha curva. Remover um livro exige confirmação e não apaga o arquivo original. As cópias privadas ocupam armazenamento e são apagadas ao desinstalar o app.
+
+## Atualizações com assinatura fixa
+A preparação da versão 2.1 está documentada em [UPDATES.md](UPDATES.md). É necessário cadastrar os Secrets privados antes da primeira publicação desta versão. O APK de debug não é mais publicado automaticamente.
