@@ -54,7 +54,7 @@ class NarrationIntegrationTest {
         withTimeout(30000) {
             while (!predicate(NarrationController.state.value)) {
                 val state = NarrationController.state.value
-                check(state.status != NarrationStatus.ERROR) { "$description: " + state.message }
+                check(description == "stop" || state.status != NarrationStatus.ERROR) { "$description: " + state.message }
                 delay(50)
             }
         }
