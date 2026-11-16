@@ -2,8 +2,14 @@
 set -euo pipefail
 gradle :app:connectedDebugAndroidTest --stacktrace
 mkdir -p app/build/reports/upgrade
-# Seed an explicit sentinel after tests and compare it across an in-place APK upgrade.
-adb shell run-as com.leitura.app sh -c "'echo preserved > files/upgrade-sentinel.txt'"
+# UTP uninstalls tested apps; reinstall the base APK and seed explicit persisted data.
+adb install app/build/outputs/apk/debug/app-debug.apk
+adb shell run-as com.leitura.app mkdir -p files shared_prefs
+printf 'preserved' | adb shell run-as com.leitura.app sh -c "'cat > files/upgrade-sentinel.txt'"
+cat <<'XML' | adb shell run-as com.leitura.app sh -c "'cat > shared_prefs/leitura.xml'"
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<map><string name="books">[{"uri":"content://test/book","title":"Duna","favorite":true,"page":7,"pageCount":30,"lastRead":123}]</string></map>
+XML
 adb shell run-as com.leitura.app cat shared_prefs/leitura.xml > app/build/reports/upgrade/before.xml
 cp app/build/outputs/apk/debug/app-debug.apk app/build/reports/upgrade/base.apk
 LEITURA_VERSION_CODE=4 gradle :app:assembleDebug --stacktrace
