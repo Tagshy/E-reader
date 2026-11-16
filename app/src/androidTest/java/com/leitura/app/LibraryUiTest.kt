@@ -39,6 +39,9 @@ class LibraryUiTest {
             compose.onNodeWithText("Verificar atualizações").assertExists()
             compose.onNodeWithText("Recentes", useUnmergedTree = true).performClick()
             compose.onNodeWithText("Jogos Vorazes").performClick()
+            compose.waitUntil(15000) {
+                compose.onAllNodesWithText("‹ Voltar").fetchSemanticsNodes().isNotEmpty()
+            }
             compose.onNodeWithText("‹ Voltar").performClick()
             scenario.recreate()
             compose.onNodeWithText("Jogos Vorazes").assertExists()
