@@ -11,6 +11,14 @@ concurrency:
   cancel-in-progress: true
 jobs:
   validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api: 29
+            target: default
+          - api: 35
+            target: google_apis
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -34,7 +42,11 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Compilar e verificar código de debug e release
-        run: gradle :app:assembleDebug :app:assembleDebugAndroidTest :app:compileReleaseKotlin :app:testDebugUnitTest :app:lintDebug :app:lintRelease --stacktrace
+        run: |
+          if ! gradle :app:assembleDebug :app:assembleDebugAndroidTest :app:compileReleaseKotlin :app:testDebugUnitTest :app:lintDebug :app:lintRelease --stacktrace; then
+            find app/build/intermediates/lint_intermediate_text_report -name '*.txt' -type f -exec cat {} \; || true
+            exit 1
+          fi
       - name: Habilitar KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -43,7 +55,8 @@ jobs:
       - name: Testar leitura, atualizador e atualização sem perder dados
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29
+          api-level: ${{ matrix.api }}
+          target: ${{ matrix.target }}
           arch: x86_64
           profile: pixel_2
           disable-animations: true
@@ -51,7 +64,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Leitura-verificacoes
+          name: Leitura-verificacoes-api-${{ matrix.api }}
           path: |
             app/build/reports/
             app/build/outputs/androidTest-results/
@@ -76,7 +89,7 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$LEITURA_KEYSTORE"
           chmod 600 "$LEITURA_KEYSTORE"
           echo "LEITURA_VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
-          echo "LEITURA_VERSION_NAME=2.2.0+build.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          echo "LEITURA_VERSION_NAME=2.3.0+build.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -108,7 +121,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v2.2.0-build-${GITHUB_RUN_NUMBER}" Leitura.apk Leitura.apk.sha256 update.json --target "$GITHUB_SHA" --title "Leitura ${LEITURA_VERSION_NAME}" --notes-file RELEASE_NOTES.md
+          gh release create "v2.3.0-build-${GITHUB_RUN_NUMBER}" Leitura.apk Leitura.apk.sha256 update.json --target "$GITHUB_SHA" --title "Leitura ${LEITURA_VERSION_NAME}" --notes-file RELEASE_NOTES.md
       - name: Remover chave temporária do runner
         if: always()
         run: if [ -n "${LEITURA_KEYSTORE:-}" ]; then rm -f -- "$LEITURA_KEYSTORE"; fi
