@@ -21,7 +21,8 @@ class OfflineLibraryTest {
     }
     private fun pdf(): File {
         val file = File(context.cacheDir, "Livro de teste.pdf")
-        PdfDocument().use { document ->
+        val document = PdfDocument()
+        try {
             repeat(3) { index ->
                 val page = document.startPage(PdfDocument.PageInfo.Builder(300, 450, index + 1).create())
                 page.canvas.drawColor(android.graphics.Color.WHITE)
@@ -29,7 +30,7 @@ class OfflineLibraryTest {
                 document.finishPage(page)
             }
             file.outputStream().use { document.writeTo(it) }
-        }
+        } finally { document.close() }
         return file
     }
     @Test fun copiedPdfSurvivesSourceDeletionAndRestoresProgress() {
