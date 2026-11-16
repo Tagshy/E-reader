@@ -11,6 +11,14 @@ concurrency:
   cancel-in-progress: true
 jobs:
   validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api: 29
+            target: default
+          - api: 35
+            target: google_apis
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -47,7 +55,8 @@ jobs:
       - name: Testar leitura, atualizador e atualização sem perder dados
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29
+          api-level: ${{ matrix.api }}
+          target: ${{ matrix.target }}
           arch: x86_64
           profile: pixel_2
           disable-animations: true
@@ -55,7 +64,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Leitura-verificacoes
+          name: Leitura-verificacoes-api-${{ matrix.api }}
           path: |
             app/build/reports/
             app/build/outputs/androidTest-results/

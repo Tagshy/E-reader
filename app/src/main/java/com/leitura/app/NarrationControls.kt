@@ -44,17 +44,18 @@ private fun NarrationPanel(book: Book, page: Int, modifier: Modifier) {
     var voiceName by remember { mutableStateOf(preferences.voiceName) }
     var speed by remember { mutableFloatStateOf(preferences.speed) }
     var voiceError by remember { mutableStateOf("") }
-    val voices by produceState<List<Voice>?>(null, refresh) {
-        value = null; voiceError = ""
+    var voices by remember { mutableStateOf<List<Voice>?>(null) }
+    LaunchedEffect(refresh) {
+        voices = null; voiceError = ""
         val initialized = CompletableDeferred<Int>()
         val engine = TextToSpeech(context) { initialized.complete(it) }
         try {
             val result = withTimeout(20000) { initialized.await() }
-            if (result == TextToSpeech.SUCCESS) value = offlinePortugueseVoices(engine.voices.orEmpty())
-            else { value = emptyList(); voiceError = "O mecanismo de voz não está disponível." }
-        } catch (_: TimeoutCancellationException) { value = emptyList(); voiceError = "O mecanismo de voz demorou para responder. Tente consultar novamente." }
+            if (result == TextToSpeech.SUCCESS) voices = offlinePortugueseVoices(engine.voices.orEmpty())
+            else { voices = emptyList(); voiceError = "O mecanismo de voz não está disponível." }
+        } catch (_: TimeoutCancellationException) { voices = emptyList(); voiceError = "O mecanismo de voz demorou para responder. Tente consultar novamente." }
         catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { value = emptyList(); voiceError = "Não foi possível consultar as vozes." }
+        catch (_: Exception) { voices = emptyList(); voiceError = "Não foi possível consultar as vozes." }
         finally { engine.shutdown() }
     }
     val active = state.uri == book.uri
