@@ -1,14 +1,30 @@
-# Leitura — Android
+# Leitura 2.0 — Android
+Leitor pessoal offline de PDFs para Android 8.0 ou superior, com tema escuro permanente e identidade dourada aprovada.
 
-Leitor offline de PDFs para Android 8.0 ou superior. Importa documentos, mostra a primeira página como capa e salva o progresso e o tema.
+## Recursos
+- Biblioteca em grade com capa real da primeira página, busca por título, favoritos e recentes.
+- Importação múltipla com nome original e deduplicação por conteúdo.
+- Cópias privadas dos PDFs: leitura sem internet mesmo após apagar ou mover o original.
+- Retomada da página, progresso percentual, gestos laterais, botões e seletor de páginas.
+- GIF original na abertura, botão para pular e logo no app e no ícone.
+- Migração da biblioteca 1.0 e de suas chaves de progresso; fontes indisponíveis não apagam os registros.
 
 ## Instalação
-Baixe Leitura.apk na versão mais recente em https://github.com/Tagshy/E-reader/releases/latest e abra no celular. Autorize a instalação para o navegador quando o Android solicitar.
+[Releases e APKs](https://github.com/Tagshy/E-reader/releases).
+As releases anteriores são preservadas. Os APKs de debug do Actions usam chaves temporárias, portanto o Android pode recusar atualização por assinatura diferente. Não desinstale a versão anterior sem guardar seus PDFs e anotar o progresso. Para atualizações compatíveis entre builds, configure futuramente uma chave privada em GitHub Secrets; nenhuma chave privada é publicada neste repositório.
 
-## Compilação
-O Actions compila assembleDebug e executa lintDebug com Java 17, Gradle 8.9 e Android SDK 35. O APK fica no artefato Leitura-APK por 90 dias e nas Releases após cada push na main.
+## Validação e publicação
+A branch leitura-2.0 valida a mudança antes da promoção para main. O Actions usa Java 17, Gradle 8.9 e Android SDK 35; executa assembleDebug, testDebugUnitTest, lintDebug e connectedDebugAndroidTest em Android 10. A publicação cria uma nova tag exclusiva e só ocorre na main depois de todos os passos passarem. Inclui SHA-256 do APK.
 
-Para compilar localmente, instale Java 17, Android SDK 35 e Gradle 8.9 e execute `gradle :app:assembleDebug :app:lintDebug`. O projeto original não contém Gradle Wrapper.
+Os testes verificam busca/favoritos/recentes, limites do progresso, renderização após excluir o PDF original, persistência e migração de páginas legadas, rejeição de PDF inválido e navegação da interface.
+
+Localmente, instale Java 17, Gradle 8.9 e SDK 35:
+```sh
+gradle :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+# Com um emulador/dispositivo Android conectado:
+gradle :app:connectedDebugAndroidTest
+```
+O projeto de origem não possui Gradle Wrapper.
 
 ## Limitações
-APK de debug para uso pessoal. Capas usam a primeira página do PDF. Animação de folha e zoom avançado ainda não estão implementados. PDFs protegidos ou removidos podem não abrir.
+PDFs protegidos por senha não são suportados. O documento mantém suas cores originais para preservar o conteúdo; a interface permanece escura. A animação de troca é uma transição suave, sem efeito de folha curva. Remover um livro exige confirmação e não apaga o arquivo original. As cópias privadas ocupam armazenamento e são apagadas ao desinstalar o app.

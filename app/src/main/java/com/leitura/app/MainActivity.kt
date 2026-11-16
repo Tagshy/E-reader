@@ -1,126 +1,235 @@
+
 package com.leitura.app
 
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.pdf.PdfRenderer
-import android.net.Uri
 import android.os.Bundle
-import android.os.ParcelFileDescriptor
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import org.json.JSONArray
-import org.json.JSONObject
-
-private data class Book(val uri: String, val title: String)
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { LeituraApp() }
+        window.statusBarColor = android.graphics.Color.rgb(11, 13, 18)
+        window.navigationBarColor = android.graphics.Color.rgb(11, 13, 18)
+        setContent { MaterialTheme(colorScheme = LeituraColors) { LeituraApp() } }
     }
 }
 
 @Composable
 private fun LeituraApp() {
     val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("leitura", 0) }
-    val books = remember { mutableStateListOf<Book>().apply {
-        val json = runCatching { JSONArray(prefs.getString("books", "[]")) }.getOrDefault(JSONArray())
-        for (i in 0 until json.length()) {
-            val item = json.optJSONObject(i) ?: continue
-            add(Book(item.optString("uri"), item.optString("title")))
+    val store = remember { LibraryStore(context.applicationContext) }
+    val books = remember { mutableStateListOf<Book>().apply { addAll(store.load()) } }
+    val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
+    var opening by rememberSaveable { mutableStateOf(true) }
+    var selectedUri by rememberSaveable { mutableStateOf<String?>(null) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var tab by rememberSaveable { mutableStateOf("Biblioteca") }
+    var importing by remember { mutableStateOf(false) }
+    var removal by remember { mutableStateOf<Book?>(null) }
+    fun update(book: Book) {
+        val index = books.indexOfFirst { it.uri == book.uri }
+        if (index >= 0) { books[index] = book; store.save(books) }
+    }
+    // Missing legacy sources retain their metadata and progress, allowing reimport.
+    LaunchedEffect(Unit) {
+        books.toList().filter { it.fileName.isBlank() }.forEach { legacy ->
+            val copy = withContext(Dispatchers.IO) { runCatching { store.import(android.net.Uri.parse(legacy.uri)) }.getOrNull() }
+            val current = books.find { it.uri == legacy.uri }
+            if (copy != null && current != null) update(current.copy(fileName = copy.fileName, pageCount = copy.pageCount))
         }
-    } }
-    var selected by remember { mutableStateOf<Book?>(null) }
-    var settings by remember { mutableStateOf(false) }
-    var pageMode by remember { mutableStateOf(prefs.getString("pageMode", "Deslizar") ?: "Deslizar") }
-    var darkMode by remember { mutableStateOf(prefs.getBoolean("dark", false)) }
+    }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        uris.forEach { uri ->
-            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-            if (books.none { it.uri == uri.toString() }) {
-                val title = uri.lastPathSegment?.substringAfterLast('/')?.substringBeforeLast(".pdf") ?: "Livro"
-                books.add(Book(uri.toString(), title))
+        if (uris.isNotEmpty()) scope.launch {
+            importing = true
+            var failed = 0
+            var added = 0
+            for (uri in uris) {
+                runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                val result = withContext(Dispatchers.IO) { runCatching { store.import(uri) } }
+                result.onSuccess { book ->
+                    val existing = books.find { it.uri == book.uri || it.fileName == book.fileName }
+                    if (existing == null) { books.add(book); added++ }
+                    else update(existing.copy(fileName = book.fileName, pageCount = book.pageCount))
+                }.onFailure { failed++ }
             }
+            store.save(books)
+            importing = false
+            snackbar.showSnackbar(if (failed > 0) "$added importado(s). $failed arquivo(s) não puderam ser abertos; verifique se são PDFs sem senha."
+                else if (added > 0) "$added livro(s) disponível(is) offline." else "Os livros selecionados já estão na biblioteca.")
         }
-        val json = JSONArray()
-        books.forEach { json.put(JSONObject().put("uri", it.uri).put("title", it.title)) }
-        prefs.edit().putString("books", json.toString()).apply()
     }
-    MaterialTheme(colorScheme = if (darkMode) darkColorScheme() else lightColorScheme()) {
-        Scaffold(topBar = {
-            Surface(tonalElevation = 2.dp) {
-                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (selected != null) "Leitura" else if (settings) "Configurações" else "Minha biblioteca", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                    if (selected != null || settings) TextButton(onClick = { selected = null; settings = false }) { Text("Voltar") }
-                    else TextButton(onClick = { settings = true }) { Text("Ajustes") }
+    BackHandler(selectedUri != null) { selectedUri = null }
+    if (opening) { Opening { opening = false }; return }
+    val selected = books.find { it.uri == selectedUri }
+    Scaffold(containerColor = Ink, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
+        Surface(color = Ink) {
+            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (selected != null) {
+                    TextButton(onClick = { selectedUri = null }) { Text("‹ Voltar") }
+                    Text(selected.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { update(selected.copy(favorite = !selected.favorite)) }) {
+                        Text(if (selected.favorite) "★" else "☆", fontSize = 26.sp,
+                            modifier = Modifier.semantics { contentDescription = if (selected.favorite) "Remover dos favoritos" else "Adicionar aos favoritos" })
+                    }
+                } else {
+                    BrandMark(Modifier.size(64.dp))
+                    Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                        Text("Leitura", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = Gold)
+                        Text("UM UNIVERSO EM CADA PÁGINA", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text("2.0", color = Gold, style = MaterialTheme.typography.labelMedium)
                 }
             }
-        }) { padding ->
-            Box(Modifier.fillMaxSize().padding(padding)) {
-                when {
-                    settings -> Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                        Text("Navegação de páginas", style = MaterialTheme.typography.titleMedium)
-                        listOf("Deslizar", "Folhear (experimental)").forEach { option ->
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable {
-                                pageMode = option; prefs.edit().putString("pageMode", option).apply()
-                            }) {
-                                RadioButton(selected = pageMode == option, onClick = { pageMode = option; prefs.edit().putString("pageMode", option).apply() })
-                                Text(option)
-                            }
-                        }
-                        Text("O efeito visual de folha ainda não está implementado. Ambas as opções usam gestos laterais nesta versão.", style = MaterialTheme.typography.bodySmall)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Modo escuro", modifier = Modifier.weight(1f))
-                            Switch(checked = darkMode, onCheckedChange = { darkMode = it; prefs.edit().putBoolean("dark", it).apply() })
-                        }
+        }
+    }, bottomBar = {
+        if (selected == null) NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+            listOf("Biblioteca" to "▤", "Favoritos" to "★", "Recentes" to "◷").forEach { (name, symbol) ->
+                NavigationBarItem(selected = tab == name, onClick = { tab = name },
+                    icon = { Text(symbol, fontSize = 23.sp) }, label = { Text(name) })
+            }
+        }
+    }) { padding ->
+        if (selected != null) PdfReader(selected, store, Modifier.padding(padding), onProgress = { page, count ->
+            books.find { it.uri == selected.uri }?.let { update(it.copy(page = page, pageCount = count, lastRead = System.currentTimeMillis())) }
+        }) else Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
+            Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Sua estante", style = MaterialTheme.typography.headlineMedium)
+                    Text("${books.size} livro(s) · leitura offline", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                }
+                FilledTonalButton(enabled = !importing, onClick = { picker.launch(arrayOf("application/pdf")) }) { Text("+ PDF") }
+            }
+            OutlinedTextField(value = query, onValueChange = { query = it }, singleLine = true,
+                label = { Text("Buscar na biblioteca") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
+                trailingIcon = { if (query.isNotEmpty()) TextButton(onClick = { query = "" }) { Text("Limpar") } })
+            if (importing) {
+                LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 12.dp))
+                Text("Salvando PDFs para ler offline…", style = MaterialTheme.typography.bodySmall)
+            }
+            val visible = visibleBooks(books, query, tab)
+            Text("$tab · ${visible.size}", color = Gold, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(vertical = 18.dp))
+            if (visible.isEmpty()) Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    BrandMark(Modifier.size(144.dp))
+                    Text(when { query.isNotBlank() -> "Nenhum livro encontrado"; tab == "Favoritos" -> "Suas histórias favoritas, aqui"; tab == "Recentes" -> "Continue de onde parou"; else -> "A próxima história é sua" }, style = MaterialTheme.typography.titleMedium)
+                    Text(when (tab) { "Favoritos" -> "Toque na estrela de um livro para favoritar."; "Recentes" -> "Os livros que você abrir aparecerão aqui."; else -> "Importe seus livros em PDF para começar." },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
+                }
+            } else LazyVerticalGrid(columns = GridCells.Adaptive(145.dp), contentPadding = PaddingValues(bottom = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                items(visible, key = { it.uri }) { book -> BookCard(book, store,
+                    onOpen = { selectedUri = book.uri }, onFavorite = { update(book.copy(favorite = !book.favorite)) }, onRemove = { removal = book }) }
+            }
+        }
+    }
+    removal?.let { book -> AlertDialog(onDismissRequest = { removal = null },
+        title = { Text("Remover da biblioteca?") }, text = { Text("${book.title}\n\nO arquivo original será preservado. A cópia do app e seu progresso serão removidos.") },
+        confirmButton = { TextButton(onClick = {
+            books.removeAll { it.uri == book.uri }; store.save(books)
+            val remaining = books.toList()
+            scope.launch(Dispatchers.IO) { store.remove(book, remaining) }
+            removal = null
+        }) { Text("Remover") } }, dismissButton = { TextButton(onClick = { removal = null }) { Text("Cancelar") } }) }
+}
+
+@Composable
+private fun BookCard(book: Book, store: LibraryStore, onOpen: () -> Unit, onFavorite: () -> Unit, onRemove: () -> Unit) {
+    Card(onClick = onOpen, shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Box {
+            PdfPage(book, 0, store, 300, Modifier.fillMaxWidth().aspectRatio(0.69f).background(MaterialTheme.colorScheme.surfaceVariant))
+            FilledTonalIconButton(onClick = onFavorite, modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)) {
+                Text(if (book.favorite) "★" else "☆", color = Gold, fontSize = 24.sp,
+                    modifier = Modifier.semantics { contentDescription = if (book.favorite) "Remover ${book.title} dos favoritos" else "Favoritar ${book.title}" })
+            }
+        }
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Text(book.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, minLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(10.dp))
+            LinearProgressIndicator(progress = { book.progress }, modifier = Modifier.fillMaxWidth().height(3.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(if (book.lastRead > 0) "${(book.progress * 100).roundToInt()}% lido" else "Não iniciado",
+                    modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                TextButton(onClick = onRemove, contentPadding = PaddingValues(0.dp)) { Text("Remover", fontSize = 10.sp) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PdfReader(book: Book, store: LibraryStore, modifier: Modifier, onProgress: (Int, Int) -> Unit) {
+    val count by produceState<Int?>(null, book.uri, book.fileName) {
+        value = withContext(Dispatchers.IO) { runCatching { store.count(book) }.getOrDefault(0) }
+    }
+    var page by rememberSaveable(book.uri) { mutableIntStateOf(book.page) }
+    val currentProgress by rememberUpdatedState(onProgress)
+    val total = count
+    LaunchedEffect(book.uri, page, total) {
+        if (total != null && total > 0) {
+            val bounded = page.coerceIn(0, total - 1)
+            if (bounded != page) page = bounded else currentProgress(page, total)
+        }
+    }
+    val threshold = with(LocalDensity.current) { 48.dp.toPx() }
+    Column(modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+        when {
+            total == null -> Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            total == 0 -> Box(Modifier.weight(1f).padding(24.dp), contentAlignment = Alignment.Center) {
+                Text("Não foi possível abrir este PDF. Ele pode estar protegido por senha ou indisponível. Importe novamente o arquivo original.")
+            }
+            else -> {
+                Box(Modifier.weight(1f).fillMaxWidth().pointerInput(book.uri, page, total) {
+                    var drag = 0f
+                    detectHorizontalDragGestures(onDragStart = { drag = 0f }, onHorizontalDrag = { change, amount -> change.consume(); drag += amount },
+                        onDragCancel = { drag = 0f }, onDragEnd = {
+                            if (drag < -threshold) page = (page + 1).coerceAtMost(total - 1)
+                            else if (drag > threshold) page = (page - 1).coerceAtLeast(0)
+                            drag = 0f
+                        })
+                }, contentAlignment = Alignment.Center) {
+                    Crossfade(targetState = page.coerceIn(0, total - 1), label = "Virar página") { index ->
+                        PdfPage(book, index, store, 1440, Modifier.fillMaxSize().padding(8.dp))
                     }
-                    selected != null -> PdfReader(selected!!, prefs)
-                    else -> Column(Modifier.fillMaxSize().padding(16.dp)) {
-                        Button(onClick = { picker.launch(arrayOf("application/pdf")) }, modifier = Modifier.fillMaxWidth()) { Text("+ Importar livros em PDF") }
-                        Spacer(Modifier.height(16.dp))
-                        if (books.isEmpty()) Text("Sua biblioteca está vazia. Importe um PDF para começar.")
-                        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(books, key = { it.uri }) { book ->
-                                Card(onClick = { selected = book }, modifier = Modifier.fillMaxWidth()) {
-                                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        PdfPage(book.uri, 0, Modifier.size(width = 72.dp, height = 100.dp))
-                                        Spacer(Modifier.width(14.dp))
-                                        Column(Modifier.weight(1f)) {
-                                            Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
-                                            Text("Toque para ler", style = MaterialTheme.typography.bodySmall)
-                                        }
-                                        TextButton(onClick = {
-                                            books.remove(book)
-                                            val json = JSONArray()
-                                            books.forEach { json.put(JSONObject().put("uri", it.uri).put("title", it.title)) }
-                                            prefs.edit().putString("books", json.toString()).apply()
-                                        }) { Text("Remover") }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                }
+                if (total > 1) Slider(value = page.toFloat(), onValueChange = { page = it.roundToInt().coerceIn(0, total - 1) },
+                    valueRange = 0f..(total - 1).toFloat(), modifier = Modifier.padding(horizontal = 24.dp).semantics { contentDescription = "Ir para página" })
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    TextButton(onClick = { page-- }, enabled = page > 0) { Text("‹ Anterior") }
+                    Text("${page + 1} / $total", style = MaterialTheme.typography.labelLarge)
+                    TextButton(onClick = { page++ }, enabled = page < total - 1) { Text("Próxima ›") }
                 }
             }
         }
@@ -128,55 +237,15 @@ private fun LeituraApp() {
 }
 
 @Composable
-private fun PdfReader(book: Book, prefs: android.content.SharedPreferences) {
-    val context = LocalContext.current
-    val count = remember(book.uri) { runCatching {
-        context.contentResolver.openFileDescriptor(Uri.parse(book.uri), "r")?.use { fd -> PdfRenderer(fd).use { it.pageCount } } ?: 0
-    }.getOrDefault(0) }
-    var page by remember(book.uri) { mutableIntStateOf(prefs.getInt("page:${book.uri}", 0).coerceIn(0, (count - 1).coerceAtLeast(0))) }
-    var drag by remember { mutableFloatStateOf(0f) }
-    fun navigate(delta: Int) {
-        page = (page + delta).coerceIn(0, (count - 1).coerceAtLeast(0))
-        prefs.edit().putInt("page:${book.uri}", page).apply()
+private fun PdfPage(book: Book, index: Int, store: LibraryStore, width: Int, modifier: Modifier) {
+    var error by remember(book.uri, index, book.fileName) { mutableStateOf(false) }
+    val bitmap by produceState<Bitmap?>(null, book.uri, book.fileName, index, width) {
+        value = withContext(Dispatchers.IO) { runCatching { store.render(book, index, width) }.getOrNull() }
+        error = value == null
     }
-    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-        if (count == 0) Text("Não foi possível abrir este PDF.", Modifier.padding(20.dp))
-        else {
-            Box(Modifier.weight(1f).fillMaxWidth().pointerInput(book.uri, page) {
-                detectHorizontalDragGestures(onDragStart = { drag = 0f }, onHorizontalDrag = { change, amount -> change.consume(); drag += amount }, onDragEnd = {
-                    if (drag < -70f) navigate(1) else if (drag > 70f) navigate(-1)
-                    drag = 0f
-                })
-            }, contentAlignment = Alignment.Center) {
-                PdfPage(book.uri, page, Modifier.fillMaxSize().padding(8.dp))
-            }
-            Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { navigate(-1) }, enabled = page > 0) { Text("Anterior") }
-                Text("${page + 1} / $count")
-                TextButton(onClick = { navigate(1) }, enabled = page < count - 1) { Text("Próxima") }
-            }
-        }
+    val image = bitmap
+    if (image != null) Image(image.asImageBitmap(), "${book.title}, página ${index + 1}", modifier, contentScale = ContentScale.Fit)
+    else Box(modifier, contentAlignment = Alignment.Center) {
+        if (error) Text(if (width <= 320) "PDF" else "Não foi possível exibir a página.") else CircularProgressIndicator(Modifier.size(24.dp))
     }
-}
-
-@Composable
-private fun PdfPage(uri: String, index: Int, modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    val bitmap = remember(uri, index) {
-        runCatching {
-            context.contentResolver.openFileDescriptor(Uri.parse(uri), "r")?.use { fd ->
-                PdfRenderer(fd).use { renderer ->
-                    renderer.openPage(index.coerceIn(0, renderer.pageCount - 1)).use { page ->
-                        val scale = (1200f / page.width).coerceAtMost(2f)
-                        val image = Bitmap.createBitmap((page.width * scale).toInt().coerceAtLeast(1), (page.height * scale).toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
-                        image.eraseColor(android.graphics.Color.WHITE)
-                        page.render(image, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                        image
-                    }
-                }
-            }
-        }.getOrNull()
-    }
-    if (bitmap != null) Image(bitmap.asImageBitmap(), contentDescription = "Página ${index + 1}", modifier = modifier, contentScale = ContentScale.Fit)
-    else Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) { Text("PDF") }
 }

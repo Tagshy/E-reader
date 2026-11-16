@@ -1,0 +1,39 @@
+package com.leitura.app
+
+import android.content.Context
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.test.core.app.ActivityScenario
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class LibraryUiTest {
+    @get:Rule val compose = createEmptyComposeRule()
+    @Test fun searchFavoritesAndRecentNavigation() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.getSharedPreferences("leitura", 0).edit().clear().commit()
+        LibraryStore(context).save(listOf(Book("content://missing/duna", "Duna", favorite = true),
+            Book("content://missing/jogos", "Jogos Vorazes", lastRead = 123)))
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            compose.waitUntil(10000) { compose.onAllNodesWithText("Sua estante").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Duna").assertExists()
+            compose.onNodeWithText("Favoritos", useUnmergedTree = true).performClick()
+            compose.onNodeWithText("Duna").assertExists()
+            compose.onNodeWithText("Jogos Vorazes").assertDoesNotExist()
+            compose.onNodeWithText("Recentes", useUnmergedTree = true).performClick()
+            compose.onNodeWithText("Jogos Vorazes").assertExists()
+            compose.onNodeWithText("Duna").assertDoesNotExist()
+            compose.onNodeWithText("Buscar na biblioteca").performTextInput("inexistente")
+            compose.onNodeWithText("Nenhum livro encontrado").assertExists()
+            compose.onNodeWithText("Limpar").performClick()
+            compose.onNodeWithText("Jogos Vorazes").performClick()
+            compose.onNodeWithText("‹ Voltar").performClick()
+            scenario.recreate()
+            compose.onNodeWithText("Jogos Vorazes").assertExists()
+        }
+    }
+}
