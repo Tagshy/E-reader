@@ -178,6 +178,7 @@ fun PdfReader(book: Book, store: LibraryStore, onBack: () -> Unit, onFavorite: (
                                 Text("${page + 1} / $total", style = MaterialTheme.typography.labelLarge)
                                 TextButton(onClick = { move(1) }, enabled = page < total - 1 && !turning) { Text("Próxima ›") }
                             }
+                            NarrationControls(book, page)
                         }
                     }
                 }

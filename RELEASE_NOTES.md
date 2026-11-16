@@ -1,13 +1,16 @@
-# Leitura 2.2 — Mais espaço para suas histórias
+# Leitura 2.3 — Ouvir seus livros
 
-- Biblioteca mais limpa, com “Olá, Walter”, sem logo, slogan ou barra de pesquisa no cabeçalho.
-- Botão colorido para adicionar livros em PDF; favoritos, recentes e capas mantidos.
-- Aba Atualizações dedicada, sem janela de atualização na tela inicial.
-- Leitor abre automaticamente em tela cheia, com controles ocultos e tela acordada.
-- Virada de página com perspectiva, sombra e animação nos dois sentidos.
-- Deslize ou toque nas bordas para passar páginas; toque no centro para mostrar os controles.
-- Progresso salvo e PDFs disponíveis offline.
-- Mesma assinatura privada da versão 2.1: instale como atualização, sem desinstalar.
+- Narração offline em português com as vozes instaladas no Android.
+- Ouvir a partir da página aberta ou retomar o progresso de áudio salvo.
+- Velocidade de 0,5× a 2× e seleção de voz offline.
+- Áudio em segundo plano, com tela apagada, notificação e controles de mídia.
+- Pausa ao perder o foco de áudio ou desconectar os fones.
+- Extração de texto do PDF e reconhecimento local de páginas escaneadas.
+- Controle compacto na biblioteca; livros e progresso visual preservados.
+- Mesma assinatura fixa: atualize sem desinstalar.
 
-Android 8.0 ou superior. As páginas preservam as cores e a proporção originais do PDF.
-A permissão de instalação do Android pode ser solicitada ao usar a atualização dentro do app.
+No leitor, toque no centro para mostrar os controles e escolha “Ouvir livro”.
+É necessário um mecanismo de fala e uma voz offline de português instalados no Android.
+O download inicial dos dados de voz pode exigir internet; os livros não são enviados para narração.
+A posição do áudio é independente da leitura visual. Vozes sem callbacks de palavras podem repetir um pequeno trecho ao retomar.
+OCR e PDFs com colunas, rodapés ou codificações incomuns podem causar erros ou alterar a ordem da narração.

@@ -59,6 +59,9 @@ class LibraryStore(private val context: Context) {
         ParcelFileDescriptor.open(it, ParcelFileDescriptor.MODE_READ_ONLY)
     } ?: context.contentResolver.openFileDescriptor(Uri.parse(book.uri), "r")
         ?: error("Arquivo indisponível. Importe novamente o PDF.")
+    fun openInput(book: Book): java.io.InputStream = localFile(book)?.takeIf { it.exists() }?.inputStream()
+        ?: context.contentResolver.openInputStream(Uri.parse(book.uri))
+        ?: error("Arquivo indisponível. Importe novamente o PDF.")
     fun count(book: Book): Int = descriptor(book).use { fd -> PdfRenderer(fd).use { it.pageCount } }
     fun import(uri: Uri): Book {
         val name = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {

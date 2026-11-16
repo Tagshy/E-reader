@@ -107,12 +107,15 @@ private fun LeituraApp() {
     }
     Scaffold(containerColor = Ink, snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
+            Column {
+            NarrationMiniPlayer()
             NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                 listOf("Biblioteca" to "▤", "Favoritos" to "★", "Recentes" to "◷", "Atualizações" to "↓").forEach { (name, symbol) ->
                     NavigationBarItem(selected = tab == name, onClick = { tab = name },
                         icon = { Text(symbol, fontSize = 22.sp) },
                         label = { Text(name, fontSize = 10.sp, maxLines = 1) })
                 }
+            }
             }
         }) { padding ->
         if (tab == "Atualizações") UpdatesScreen(Modifier.padding(padding))
@@ -173,6 +176,7 @@ private fun LeituraApp() {
     removal?.let { book -> AlertDialog(onDismissRequest = { removal = null },
         title = { Text("Remover da biblioteca?") }, text = { Text("${book.title}\n\nO arquivo original será preservado. A cópia do app e seu progresso serão removidos.") },
         confirmButton = { TextButton(onClick = {
+            if (NarrationController.state.value.uri == book.uri) NarrationController.command(context, NarrationService.STOP)
             books.removeAll { it.uri == book.uri }; store.save(books)
             val remaining = books.toList()
             scope.launch(Dispatchers.IO) { store.remove(book, remaining) }
