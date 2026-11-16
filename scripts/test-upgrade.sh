@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Include exact test failures in the job log as well as downloadable reports.
+trap 'find app/build/outputs/androidTest-results -name "*.xml" -type f -exec cat {} \; 2>/dev/null || true' ERR
 gradle :app:connectedDebugAndroidTest --stacktrace
 mkdir -p app/build/reports/upgrade
 # UTP uninstalls tested apps; reinstall the base APK and seed explicit persisted data.
